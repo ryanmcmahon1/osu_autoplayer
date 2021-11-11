@@ -1,8 +1,12 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
+start = time.time()
 img = cv2.imread("images/osu_pic.jpg")
+# img = cv2.resize(img, (1280//2, 720//2))
+print(img.shape)
 # cv2.imshow("Input image", img)
 
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -32,5 +36,6 @@ if small_circles is not None:
     for i in small_circles[0,:]:
         cv2.circle(img, (i[0], i[1]), i[2], (255, 0, 0), 2)
 
+print("Took", time.time()-start, "seconds")
 cv2.imshow("circle detection", img)
 cv2.waitKey()
