@@ -6,20 +6,26 @@ import RPi.GPIO as GPIO
 from struct import unpack
 from PIL import Image
 import pyautogui
+from multiprocessing import Process
 pyautogui.FAILSAFE = False
 
+# Port number to use for TCP connection
 PORT = 28800
 
+# Cursor location
 cursor_location = (0, 0)
 
+# Shift limit for incremental mouse movement 
 SHIFT_LIMIT = (pyautogui.size()[0]//2, pyautogui.size()[1]//2)
 
 class OsuAutoplayer:
 
-
     def __init__(self, image=None):
+        # Most recent screenshot received
         self.image = image
+        # Display circle detection variable
         self.disp = False
+
         # set of large circles (position and radius)
         # self.large_circles = 0
         # set of small circles, should all have same radius as each other
@@ -31,11 +37,18 @@ class OsuAutoplayer:
 
         self.run_autoplayer = False
         self.system_exit = False
+
         # Storing circles as [x, y, inner radius, outer radius, prev. outer radius], -1 for no seen outer radius
         self.active_circles = []
+
+        # TCP setup
         self.HOST_IP = input("Provide Host IP Address to connect to: ")
         self.active_socket =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.active_socket.connect((self.HOST_IP, PORT))
+
+        # Approximated approach rate for large circle radius size decay (radius/sec)
+        self.approach_rate = -1
+
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -67,6 +80,7 @@ class OsuAutoplayer:
             time.sleep(0.01)
             # time.sleep(0.5)
             pyautogui.moveTo(pyautogui.size()[0], 0)
+            global cursor_location
             cursor_location = (0, 0)
             print(f"Reset cursor to {cursor_location}.")
         else:
@@ -78,12 +92,19 @@ class OsuAutoplayer:
         while not self.system_exit:
             while self.run_autoplayer:
                 # wait for image to be sent from Osu game
-                # set self.image
                 self.receive_image()
+
+                # Detect circles from screenshot
                 circles, small_circles = self.detect_circles(self.disp)
+                
+                # Update game state
                 self.update_circles(circles, small_circles)
-                print(self.active_circles)
+                print(self.active_circles) # Debug to view perceived game state
+
+                # Move mouse as necessary
                 self.update_mouse()
+
+                # Prioritize system exit over running autoplayer
                 if self.system_exit:
                     break
         # call detect_circles
@@ -189,17 +210,17 @@ class OsuAutoplayer:
         minDist = 15
         param1 = 30 #500
         param2 = 100 #200 #smaller value-> more false circles
-        minRadius = 30
+        minRadius = 25
         maxRadius = 80
-        circles = cv2.HoughCircles(self.image//10, cv2.HOUGH_GRADIENT, 1, minDist,
+        circles = cv2.HoughCircles(self.image, cv2.HOUGH_GRADIENT, 1, minDist,
             param1=param1, param2=param2, minRadius=minRadius, maxRadius=maxRadius)
 
         # small circle detection
         minRadius = 10
-        maxRadius = 30
+        maxRadius = 25
         param2 = 60
 
-        small_circles = cv2.HoughCircles(self.image//10, cv2.HOUGH_GRADIENT, 1, minDist,
+        small_circles = cv2.HoughCircles(self.image, cv2.HOUGH_GRADIENT, 1, minDist,
             param1=param1, param2=param2, minRadius=minRadius, maxRadius=maxRadius)
         # print("Took", time.time()-start, "seconds")
         if (disp):
