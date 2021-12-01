@@ -16,7 +16,7 @@ img_arr = []
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST_IP, PORT))
     # Start Transmission
-    for i in range(5):
+    for i in range(500):
         start_time = time.time()
         s.sendall(b'1') 
         
@@ -31,8 +31,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         img = Image.frombytes('L', (400, 300), data, decoder_name='raw')
         img_array = np.array(img)
         print("Image received: ", time.time() - start_time)
-        img_arr.append(img)
-        #img_arr.append(time.time() - start_time)
+        # img_arr.append(img)
+        img_arr.append(time.time() - start_time)
     s.sendall(b'')
 
 # SOCK_DGRAM
@@ -50,8 +50,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 #     s.sendto(b'1', (HOST_IP, PORT))
 #     s.sendto(b'', (HOST_IP, PORT))
 
-for image in img_arr:
-    image.show()
-#print("Done with 500 iterations: ", statistics.mean(img_arr), max(img_arr)) 
+# for image in img_arr:
+    # image.show()
+print("Done with 500 iterations: ", statistics.mean(img_arr), max(img_arr)) 
 
 
