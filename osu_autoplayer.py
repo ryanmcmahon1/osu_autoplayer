@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import time
 import socket
+
 import RPi.GPIO as GPIO
 from struct import unpack
 from PIL import Image
@@ -17,6 +18,41 @@ cursor_location = (0, 0)
 
 # Shift limit for incremental mouse movement 
 SHIFT_LIMIT = (pyautogui.size()[0]//2, pyautogui.size()[1]//2)
+
+class CircleTapNote:
+
+    def __init__(self, x, y, inner_radius, outer_radius=None):
+        self.x = int(x)
+        self.y = int(y)
+        self.inner_radius = int(inner_radius)
+        self.outer_radius = int(outer_radius) if outer_radius is not None else -1
+        self.last_outer_radius = self.outer_radius
+    
+    def __eq__(self, other):
+        if not isinstance(other, CircleTapNote):
+            return False
+        return self.x == other.x and self.y == other.y
+
+    def __str__(self):
+        return f"x: {self.x}, y: {self.y}, ir: {self.inner_radius}, " +\
+            f"or: {self.outer_radius}, last: {self.last_outer_radius}."
+
+    def approach_circle_space(self):
+        return self.outer_radius - self.inner_radius
+
+    # Checks for same center as circle from Hough Circles in format [x, y, radius]
+    # same center defined if location is within 5 pixels in both directions
+    def same_center_detection(self, circle):
+        if abs(self.x - int(circle[0])) < 5 and abs(self.y - int(circle[1]) < 5):
+            return True
+        else:
+            return False
+
+    def manual_outer_radius_update(self, decay):
+        if self.outer_radius < 0:
+            return
+        self.outer_radius -= decay
+
 
 class OsuAutoplayer:
 
@@ -38,7 +74,7 @@ class OsuAutoplayer:
         self.run_autoplayer = False
         self.system_exit = False
 
-        # Storing circles as [x, y, inner radius, outer radius, prev. outer radius], -1 for no seen outer radius
+        # Storing circles using CircleTapNote objects
         self.active_circles = []
 
         # TCP setup
@@ -48,6 +84,9 @@ class OsuAutoplayer:
 
         # Approximated approach rate for large circle radius size decay (radius/sec)
         self.approach_rate = -1
+        self.approach_rate_data = []
+
+        self.update_timestamp = time.time()
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -85,6 +124,8 @@ class OsuAutoplayer:
             print(f"Reset cursor to {cursor_location}.")
         else:
             self.active_circles = []
+            self.approach_rate = -1
+            self.approach_rate_data = []
 
     #TODO: wait until new image is received, update image, detect circles,
     # send mouse position update to Osu game
@@ -99,19 +140,19 @@ class OsuAutoplayer:
                 
                 # Update game state
                 self.update_circles(circles, small_circles)
-                print(self.active_circles) # Debug to view perceived game state
-
+                # Debug to view perceived game state`
+                print("[", end='')
+                for active_circle in self.active_circles:
+                    print(active_circle, end='; ')
+                print("]")
+                # print(self.active_circles) 
+                self.update_timestamp = time.time()
                 # Move mouse as necessary
                 self.update_mouse()
 
                 # Prioritize system exit over running autoplayer
                 if self.system_exit:
                     break
-        # call detect_circles
-        # update known circles
-        # call update_mouse
-        # send new mouse location/click status to Osu game
-        # loop and repeat
         self.close_connection()
 
     def close_connection(self):
@@ -176,13 +217,13 @@ class OsuAutoplayer:
         # move mouse to that location and click
         circle_dists = []
         for known_circle in self.active_circles:
-            radius_difference = int(known_circle[3]) - int(known_circle[2])
+            radius_difference = known_circle.approach_circle_space()
             circle_dists.append(radius_difference if radius_difference >= 0 else 1000)
         if circle_dists:
             while circle_dists != []:
                 min_idx = circle_dists.index(min(circle_dists))
                 next_circle = self.active_circles[min_idx]
-                self.move_cursor(next_circle[0], next_circle[1])
+                self.move_cursor(next_circle.x, next_circle.y)
                 if circle_dists[min_idx] < 10:
                     print("Clicking on last shown position.")
                     pyautogui.leftClick()
@@ -239,14 +280,17 @@ class OsuAutoplayer:
         # print(circles)
         # print(small_circles)
 
-    def manual_update_approach_radius(self, index):
-        prev_radius = self.active_circles[index][4]
-        if prev_radius < 0 or prev_radius < self.active_circles[index][3]:
+    def manual_update_approach_radius(self, index, ):
+        prev_radius = self.active_circles[index].last_outer_radius
+        if prev_radius < 0 or prev_radius < self.active_circles[index].outer_radius:
             return
-        self.active_circles[index][4] = self.active_circles[index][3]
-        self.active_circles[index][3] -= prev_radius - self.active_circles[index][3]
+        decay = self.approach_rate * (time.time() - self.update_timestamp)
+        self.active_circles[index].manual_outer_radius_update(decay)
+    #     self.active_circles[index][4] = self.active_circles[index][3]
+    #     self.active_circles[index][3] -= prev_radius - self.active_circles[index][3]
 
     def update_circles(self, circles, small_circles):
+        approach_rate_tag = False
         if small_circles is None:
             return
         updated_circles = [False for _ in self.active_circles] # array to track which circles have to be manually updated
@@ -255,14 +299,20 @@ class OsuAutoplayer:
                 continue
             known = False
             for i, known_circle in enumerate(self.active_circles):
-                if self.same_center_detection(small_circle, known_circle):
+                if known_circle.same_center_detection(small_circle):
                     known = True
                     break
             if known and circles is not None: # update outer radius if seen
+                known_circle = self.active_circles[i]
                 for outer_circle in circles[0, :]:
-                    if self.same_center_detection(self.active_circles[i], outer_circle):
-                        self.active_circles[i][4] = self.active_circles[i][3]
-                        self.active_circles[i][3] = int(outer_circle[2])
+                    if known_circle.same_center_detection(outer_circle):
+                        if known_circle.last_outer_radius > 0 and not approach_rate_tag:
+                            approach_rate_tag = True
+                            approach_rate_sample = (known_circle.last_outer_radius - int(outer_circle[2])) / (time.time() - self.update_timestamp)
+                            self.approach_rate_data.append(approach_rate_sample)
+                            self.approach_rate = sum(self.approach_rate_data) / len(self.approach_rate_data)
+                        known_circle.outer_radius = int(outer_circle[2])
+                        known_circle.last_outer_radius = int(outer_circle[2])                             
                         updated_circles[i] = True
                 continue
             elif known:
@@ -273,8 +323,11 @@ class OsuAutoplayer:
                 for outer_circle in circles[0, :]:
                     if self.same_center_detection(small_circle, outer_circle):
                         outer_radius = int(outer_circle[2])
-            new_circle = [int(small_circle[0]), int(small_circle[1]), int(small_circle[2]), outer_radius, -1]
+            new_circle = CircleTapNote(small_circle[0], small_circle[1], small_circle[2], outer_radius)
             self.active_circles.append(new_circle)
+
+        if self.approach_rate < 0:
+            return
 
         for i, entry in enumerate(updated_circles):
             if not entry:
