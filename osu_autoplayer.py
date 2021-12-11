@@ -7,17 +7,44 @@ import RPi.GPIO as GPIO
 from struct import unpack
 from PIL import Image
 import pyautogui
-from multiprocessing import Process
+from multiprocessing import Process, Value, Array
 pyautogui.FAILSAFE = False
+pyautogui.PAUSE = 0
 
 # Port number to use for TCP connection
 PORT = 28800
+HOST_IP = input("Provide Host IP Address to connect to: ")
+THRESHOLD_DIFF = 1
+TIME_LIMIT = 2
 
 # Cursor location
 cursor_location = (0, 0)
 
+# Tag used to track image updates
+image_tag_w = Value('i', -1, lock=False)
+
+system_exit = Value('i', 0, lock=False)
+
+frame_time = Value('d', 0, lock=False)
+
+delay_adjust = Value('d', 0, lock=False)
+
+# Updated images from main device, to be communicated between parallel processes.
+shared_screenshot = Array("i", 400*300, lock=False)
+
+def GPIO_callback_23(ch):
+    global system_exit
+    system_exit.value = 1
+    print("Exit asserted.")
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.add_event_detect(23, GPIO.FALLING, callback=GPIO_callback_23, bouncetime=300)
+
+
 # Shift limit for incremental mouse movement 
 SHIFT_LIMIT = (pyautogui.size()[0]//2, pyautogui.size()[1]//2)
+
 
 class CircleTapNote:
 
@@ -27,6 +54,8 @@ class CircleTapNote:
         self.inner_radius = int(inner_radius)
         self.outer_radius = int(outer_radius) if outer_radius is not None else -1
         self.last_outer_radius = self.outer_radius
+        self.frame_time_accm = 0
+        self.time_stamp = time.time()
     
     def __eq__(self, other):
         if not isinstance(other, CircleTapNote):
@@ -53,6 +82,52 @@ class CircleTapNote:
             return
         self.outer_radius -= decay
 
+class ScreenshotReceiver:
+
+    def __init__(self):
+        # TCP setup
+        self.HOST_IP = HOST_IP
+        self.active_socket =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.active_socket.connect((self.HOST_IP, PORT))
+        self.frame_timestamp = 0
+        self.frame_init_time = 0
+    
+    def receive_image(self):
+        # Send Image request
+        self.active_socket.sendall(b'1') 
+        
+        self.frame_init_time = time.time()
+
+        # Get image length
+        packed_length = self.active_socket.recv(8)
+        (length, ) = unpack('>Q', packed_length)
+        data = b''
+        while len(data) < length:
+            load_bytes = 4096 if length - len(data) > 4096 else length - len(data)
+            data += self.active_socket.recv(load_bytes)
+        # Send back ack
+        self.active_socket.sendall(b'1')
+        image = np.array(Image.frombytes('L', (400, 300), data, decoder_name='raw'))
+        self.update_shared_arr(image)
+        
+    def update_shared_arr(self, image):
+        global shared_screenshot, image_tag_w, frame_time, delay_adjust
+        image = image.reshape(400*300)
+        shared_screenshot[:]= image[:]
+        frame_time.value = time.time()
+        delay_adjust.value = self.frame_init_time
+        image_tag_w.value += 1
+    
+    def close_connection(self):
+        self.active_socket.sendall(b'')
+        self.active_socket.close()
+    
+    def run_screenshot_receive(self):
+        global system_exit
+        frame_time.value = time.time()
+        while not system_exit.value:
+            self.receive_image()
+        self.close_connection
 
 class OsuAutoplayer:
 
@@ -62,6 +137,7 @@ class OsuAutoplayer:
         # Display circle detection variable
         self.disp = False
 
+        self.image_tag_r = -1
         # set of large circles (position and radius)
         # self.large_circles = 0
         # set of small circles, should all have same radius as each other
@@ -72,37 +148,29 @@ class OsuAutoplayer:
         self.mouse_click = False
 
         self.run_autoplayer = False
-        self.system_exit = False
 
         # Storing circles using CircleTapNote objects
         self.active_circles = []
 
-        # TCP setup
-        self.HOST_IP = input("Provide Host IP Address to connect to: ")
-        self.active_socket =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.active_socket.connect((self.HOST_IP, PORT))
-
         # Approximated approach rate for large circle radius size decay (radius/sec)
         self.approach_rate = -1
-        self.approach_rate_data = []
+        self.ar_alpha = 0.3
+        self.ar_init = False
 
         self.update_timestamp = time.time()
+        self.frame_timestamp = time.time()
+        self.frame_init = False
+        self.frame_time = 0
 
-        GPIO.setmode(GPIO.BCM)
+
         GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(22, GPIO.FALLING, callback=self.GPIO_callback_22, bouncetime=300)
-        GPIO.add_event_detect(23, GPIO.FALLING, callback=self.GPIO_callback_23, bouncetime=300)
         GPIO.add_event_detect(27, GPIO.FALLING, callback=self.GPIO_callback_27, bouncetime=300)
 
     def GPIO_callback_22(self, ch):
         self.disp = not self.disp
         print(f"Circle display set to {self.disp}.")
-
-    def GPIO_callback_23(self, ch):
-        self.system_exit = True
-        print("Exit asserted.")
 
     def GPIO_callback_27(self, ch):
         self.run_autoplayer = not self.run_autoplayer
@@ -130,34 +198,62 @@ class OsuAutoplayer:
     #TODO: wait until new image is received, update image, detect circles,
     # send mouse position update to Osu game
     def update(self):
-        while not self.system_exit:
+        iter_ct = 0
+        global system_exit, frame_time, delay_adjust
+        while not system_exit.value:
             while self.run_autoplayer:
+                time_stamp = time.time()
+                circles = None
+                small_circles = None
+                frame_update = False
                 # wait for image to be sent from Osu game
-                self.receive_image()
-
-                # Detect circles from screenshot
-                circles, small_circles = self.detect_circles(self.disp)
-                
+                tag_read = image_tag_w.value
+                screenshot_frame_time = frame_time.value
+                delay_adj = delay_adjust.value
+                if tag_read > 0 and tag_read != self.image_tag_r:
+                    
+                    self.image = np.array(shared_screenshot[:], dtype=int).reshape((300, 400))
+                    self.image = self.image.astype("uint8").copy()
+                    self.image_tag_r = tag_read
+                    # Detect circles from screenshot
+                    circles, small_circles = self.detect_circles(self.disp)
+                    if self.frame_init:
+                        self.frame_time = screenshot_frame_time - self.frame_timestamp
+                    else:
+                        self.frame_init = True
+                    self.frame_timestamp = screenshot_frame_time
+                    frame_update = True
+                    print(f"AR: {self.approach_rate}; frametime: {self.frame_time}\n")
+                    # Debug to view perceived game state`
+                    print("[", end='')
+                    for active_circle in self.active_circles:
+                        print(active_circle, end='; \n')
+                    print("] \n")
+                else:
+                    time.sleep(0.001)
+                post_image_time = time.time()
                 # Update game state
-                self.update_circles(circles, small_circles)
+                self.update_circles(circles, small_circles, frame_update, delay_adj)
+                circle_update = time.time()
                 # Debug to view perceived game state`
-                print("[", end='')
-                for active_circle in self.active_circles:
-                    print(active_circle, end='; ')
-                print("]")
+                # print("[", end='')
+                # for active_circle in self.active_circles:
+                #     print(active_circle, end='; ')
+                # print("]")
                 # print(self.active_circles) 
                 self.update_timestamp = time.time()
                 # Move mouse as necessary
                 self.update_mouse()
-
+                mouse_update = time.time()
+                loop_time = time.time() - time_stamp
+                if loop_time > .2:
+                    print(f"Long loop time: {loop_time}; iter {iter_ct}")
+                    print(f"image: {post_image_time - time_stamp}, circle: {circle_update - post_image_time}, mouse: {mouse_update - circle_update}")
+                    
                 # Prioritize system exit over running autoplayer
-                if self.system_exit:
+                if system_exit.value:
                     break
-        self.close_connection()
-
-    def close_connection(self):
-        self.active_socket.sendall(b'')
-        self.active_socket.close()
+                iter_ct += 1
     
     @staticmethod
     def transform_position(x, y):
@@ -171,7 +267,8 @@ class OsuAutoplayer:
         dest_x, dest_y = self.transform_position(x, y)
         relative_x = dest_x - cursor_location[0]
         relative_y = dest_y - cursor_location[1]
-        print(f"Moving to ({dest_x}, {dest_y}) with relative ({relative_x}, {relative_y}) for original cooridinates of ({x}, {y}).")
+        if cursor_location != (dest_x, dest_y):
+            print(f"Moving to ({dest_x}, {dest_y}) with relative ({relative_x}, {relative_y}) for original cooridinates of ({x}, {y}).")
         # Incremental movement needed because of barrier limitations
         movement_x = 0
         movement_y = 0
@@ -192,23 +289,9 @@ class OsuAutoplayer:
             time.sleep(0.01)
             movement_x += shift_x
             movement_y += shift_y
-            print(f"Shifted by ({shift_x}, {shift_y}).")
+            if self.disp:
+                print(f"Shifted by ({shift_x}, {shift_y}).")
         cursor_location = (dest_x, dest_y)
-
-    def receive_image(self):
-        # Send Image request
-        self.active_socket.sendall(b'1') 
-        
-        # Get image length
-        packed_length = self.active_socket.recv(8)
-        (length, ) = unpack('>Q', packed_length)
-        data = b''
-        while len(data) < length:
-            load_bytes = 4096 if length - len(data) > 4096 else length - len(data)
-            data += self.active_socket.recv(load_bytes)
-        # Send back ack
-        self.active_socket.sendall(b'1')
-        self.image = np.array(Image.frombytes('L', (400, 300), data, decoder_name='raw'))
 
     # TODO: based on current mouse location and location of circles,
     # decide where to move mouse to
@@ -218,17 +301,22 @@ class OsuAutoplayer:
         circle_dists = []
         for known_circle in self.active_circles:
             radius_difference = known_circle.approach_circle_space()
-            circle_dists.append(radius_difference if radius_difference >= 0 else 1000)
+            circle_dists.append(1000 if (radius_difference < 0 and known_circle.last_outer_radius < 0) else radius_difference)
         if circle_dists:
             while circle_dists != []:
                 min_idx = circle_dists.index(min(circle_dists))
-                next_circle = self.active_circles[min_idx]
-                self.move_cursor(next_circle.x, next_circle.y)
-                if circle_dists[min_idx] < 10:
-                    print("Clicking on last shown position.")
-                    pyautogui.leftClick()
-                    self.active_circles.remove(next_circle)
-                    circle_dists.remove(circle_dists[min_idx])
+                if circle_dists[min_idx] < 20:
+                    print(circle_dists)
+                if circle_dists[min_idx] != 1000:
+                    next_circle = self.active_circles[min_idx]
+                    self.move_cursor(next_circle.x, next_circle.y)
+                    if circle_dists[min_idx] < THRESHOLD_DIFF:
+                        print("Clicking on last shown position.")
+                        pyautogui.leftClick()
+                        self.active_circles.remove(next_circle)
+                        circle_dists.remove(circle_dists[min_idx])
+                    else:
+                        break
                 else:
                     break
         
@@ -286,56 +374,80 @@ class OsuAutoplayer:
             return
         decay = self.approach_rate * (time.time() - self.update_timestamp)
         self.active_circles[index].manual_outer_radius_update(decay)
-    #     self.active_circles[index][4] = self.active_circles[index][3]
-    #     self.active_circles[index][3] -= prev_radius - self.active_circles[index][3]
 
-    def update_circles(self, circles, small_circles):
-        approach_rate_tag = False
-        if small_circles is None:
-            return
+    def update_circles(self, circles, small_circles, frame_update, delay):
         updated_circles = [False for _ in self.active_circles] # array to track which circles have to be manually updated
-        for small_circle in small_circles[0,:]:
-            if small_circle[2] < 10:
-                continue
-            known = False
-            for i, known_circle in enumerate(self.active_circles):
-                if known_circle.same_center_detection(small_circle):
-                    known = True
-                    break
-            if known and circles is not None: # update outer radius if seen
-                known_circle = self.active_circles[i]
-                for outer_circle in circles[0, :]:
-                    if known_circle.same_center_detection(outer_circle):
-                        if known_circle.last_outer_radius > 0 and not approach_rate_tag:
-                            approach_rate_tag = True
-                            approach_rate_sample = (known_circle.last_outer_radius - int(outer_circle[2])) / (time.time() - self.update_timestamp)
-                            self.approach_rate_data.append(approach_rate_sample)
-                            self.approach_rate = sum(self.approach_rate_data) / len(self.approach_rate_data)
-                        known_circle.outer_radius = int(outer_circle[2])
-                        known_circle.last_outer_radius = int(outer_circle[2])                             
-                        updated_circles[i] = True
-                continue
-            elif known:
-                continue
-            # Else, add new circle to active circles list
-            outer_radius = -1
-            if circles is not None:
-                for outer_circle in circles[0, :]:
-                    if self.same_center_detection(small_circle, outer_circle):
-                        outer_radius = int(outer_circle[2])
-            new_circle = CircleTapNote(small_circle[0], small_circle[1], small_circle[2], outer_radius)
-            self.active_circles.append(new_circle)
-
-        if self.approach_rate < 0:
-            return
+        if small_circles is not None:
+            for small_circle in small_circles[0,:]:
+                if small_circle[2] < 10:
+                    continue
+                known = False
+                i = None
+                for i, known_circle in enumerate(self.active_circles):
+                    if known_circle.same_center_detection(small_circle):
+                        known = True
+                        break
+                if i is not None and updated_circles[i]:
+                    continue
+                if known and circles is not None: # update outer radius if seen
+                    known_circle = self.active_circles[i]
+                    for outer_circle in circles[0, :]:
+                        if known_circle.same_center_detection(outer_circle):
+                            if known_circle.last_outer_radius > 0:
+                                approach_rate_sample = (known_circle.last_outer_radius - int(outer_circle[2])) / (self.frame_time + known_circle.frame_time_accm)
+                                if self.ar_init:
+                                    self.approach_rate = self.ar_alpha * approach_rate_sample + (1 - self.ar_alpha) * self.approach_rate
+                                else:
+                                    self.approach_rate = approach_rate_sample
+                                    self.ar_init = True
+                                print(f"AR sample: {approach_rate_sample}; {known_circle.last_outer_radius}, {int(outer_circle[2])}, {known_circle.frame_time_accm}")
+                            if self.approach_rate > 0:
+                                adjusted_radius = int(outer_circle[2]) - self.approach_rate * (time.time() - delay)
+                            else:
+                                adjusted_radius = int(outer_circle[2])
+                            known_circle.outer_radius = adjusted_radius
+                            known_circle.last_outer_radius = int(outer_circle[2])
+                            known_circle.frame_time_accm = 0
+                            known_circle.time_stamp = time.time()
+                            updated_circles[i] = True
+                    continue
+                elif known:
+                    continue
+                # Else, add new circle to active circles list
+                print("spawn new circle")
+                outer_radius = -1
+                if circles is not None:
+                    for outer_circle in circles[0, :]:
+                        if self.same_center_detection(small_circle, outer_circle):
+                            outer_radius = int(outer_circle[2])
+                new_circle = CircleTapNote(small_circle[0], small_circle[1], small_circle[2], outer_radius)
+                self.active_circles.append(new_circle)
+                updated_circles.append(True)
 
         for i, entry in enumerate(updated_circles):
             if not entry:
-                self.manual_update_approach_radius(i)
+                if frame_update:
+                    self.active_circles[i].frame_time_accm += self.frame_time
+                if self.approach_rate > 0:
+                    self.manual_update_approach_radius(i)
+
+
+        for entry in self.active_circles:
+            if time.time() - entry.time_stamp > TIME_LIMIT and entry.last_outer_radius < 0:
+                self.active_circles.remove(entry)
+        
+        
     
+
+def parallel_process():
+    screenshot_receiver = ScreenshotReceiver()
+    screenshot_receiver.run_screenshot_receive()
 
 # img = cv2.imread("images/adj_image_seq_0.bmp", cv2.IMREAD_GRAYSCALE)
 # pyautogui.moveTo(pyautogui.size()[0], 0)
 autoplayer = OsuAutoplayer()
+parallel_process = Process(target=parallel_process)
+parallel_process.start()
 autoplayer.update()
+parallel_process.join()
 # autoplayer.detect_circles(True)
