@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import time
 import socket
+import math
 
 import RPi.GPIO as GPIO
 from struct import unpack
@@ -74,8 +75,15 @@ class OsuAutoplayer:
         self.run_autoplayer = False
         self.system_exit = False
 
+        # threshold for line detection
+        self.line_thresh = 100
+
         # Storing circles using CircleTapNote objects
         self.active_circles = []
+        self.active_long_notes = []
+
+        # true if mouse is currently inside a long note, change cli
+        self.long_note = False
 
         # TCP setup
         self.HOST_IP = input("Provide Host IP Address to connect to: ")
@@ -124,6 +132,7 @@ class OsuAutoplayer:
             print(f"Reset cursor to {cursor_location}.")
         else:
             self.active_circles = []
+            self.active_long_notes = []
             self.approach_rate = -1
             self.approach_rate_data = []
 
@@ -137,6 +146,9 @@ class OsuAutoplayer:
 
                 # Detect circles from screenshot
                 circles, small_circles = self.detect_circles(self.disp)
+
+                # potentially change this to store long notes instead of looking at each photo
+                self.active_long_notes = self.detect_long_notes(self.disp)
                 
                 # Update game state
                 self.update_circles(circles, small_circles)
@@ -224,13 +236,28 @@ class OsuAutoplayer:
                 min_idx = circle_dists.index(min(circle_dists))
                 next_circle = self.active_circles[min_idx]
                 self.move_cursor(next_circle.x, next_circle.y)
+                # keep track of if we were in a long note previously
+                long_note_prev = self.long_note
+                self.long_note = False
+
+                for long_note in self.active_long_notes:
+                    if (self.in_long_note(long_note, next_circle.x, next_circle.y)):
+                        self.long_note = True
                 if circle_dists[min_idx] < 10:
                     print("Clicking on last shown position.")
                     pyautogui.leftClick()
                     self.active_circles.remove(next_circle)
                     circle_dists.remove(circle_dists[min_idx])
                 else:
-                    break
+                    # if detection of long note changed, we either need to hold mouse down or release
+                    if (self.long_note != long_note_prev):
+                        if (long_note_prev):
+                            pyautogui.mouseUp()
+                        else:
+                            pyautogui.mouseDown()
+    
+    # returns true if the given point is inside a long note
+    def in_long_note(self, long_note, x, y):
         
     
     # detects large and small circles in current image
@@ -247,7 +274,7 @@ class OsuAutoplayer:
     def detect_circles(self, disp=False):
         # start = time.time()
         
-        # Large cicle detection
+        # Large circle detection
         minDist = 15
         param1 = 30 #500
         param2 = 100 #200 #smaller value-> more false circles
@@ -279,6 +306,59 @@ class OsuAutoplayer:
         return circles, small_circles
         # print(circles)
         # print(small_circles)
+    
+    def detect_long_notes(self, disp=False):
+        edges = cv2.Canny(self.image,50,250, None)
+        lines = cv2.HoughLines(edges,1,np.pi/180,self.line_thresh,None,0,0)
+        # r = (r1, r2) is key, theta is value. r gives the upper and lower lines of rectangle, 
+        # theta gives orientation
+        lines_2 = []
+        longNotes = {}
+
+        if lines is not None:
+            # removing lines detected within 5 pixels of each other
+            lines_2.append((lines[0][0][0], lines[0][0][1]))
+            for i in range(1,len(lines)):
+                # print("checking", i)
+                duplicate = False
+                for line2 in lines_2:
+                    if (abs(lines[i][0][0] - line2[0]) < 7 and abs(lines[i][0][1] - line2[1]) < .2):
+                        # print(lines[i][0][0], line2[0], "are not at least 5 pixels apart and have similar orientation")
+                        duplicate = True
+                if (not duplicate):
+                    lines_2.append((lines[i][0][0], lines[i][0][1]))
+
+            # print(lines_2)
+            for i in range(len(lines_2)):
+                for j in range(i+1, len(lines_2)):
+                    r1, t1 = (lines_2[i][0], lines_2[i][1])
+                    r2, t2 = (lines_2[j][0], lines_2[j][1])
+                    dist = abs(r1 - r2)
+                    if (dist - 44 < 10 and dist - 44 > -10 and abs(t1 - t2) < .02):
+                        if (r1 < r2):
+                            longNotes[(r1,r2)] = (t1+t2)/2
+                        else:
+                            longNotes[(r2,r1)] = (t1+t2)/2
+                        break
+        if (disp):
+            cdst = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+            colors = [(0,0,255), (0,255,0), (255,0,0)]
+            color = 0
+            print(longNotes)
+            for r, theta in longNotes.items():
+                a = math.cos(theta)
+                b = math.sin(theta)
+                for i in r:
+                    x0 = a * i
+                    y0 = b * i
+                    pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
+                    pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+                    cv2.line(cdst, pt1, pt2, colors[color], 3, cv2.LINE_AA)
+                color += 1
+                if (color > 2): color = 0
+            cv2.imshow("line detection", cdst)
+
+        return longNotes
 
     def manual_update_approach_radius(self, index, ):
         prev_radius = self.active_circles[index].last_outer_radius
