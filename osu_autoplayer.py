@@ -19,6 +19,7 @@ cursor_location = (0, 0)
 
 # Shift limit for incremental mouse movement 
 SHIFT_LIMIT = (pyautogui.size()[0]//2, pyautogui.size()[1]//2)
+TIME_LIMIT = 2
 
 class CircleTapNote:
 
@@ -28,6 +29,7 @@ class CircleTapNote:
         self.inner_radius = int(inner_radius)
         self.outer_radius = int(outer_radius) if outer_radius is not None else -1
         self.last_outer_radius = self.outer_radius
+        self.time_stamp = time.time()
     
     def __eq__(self, other):
         if not isinstance(other, CircleTapNote):
@@ -135,6 +137,8 @@ class OsuAutoplayer:
             self.active_long_notes = {}
             self.approach_rate = -1
             self.approach_rate_data = []
+            pyautogui.mouseUp()
+            self.long_note = False
 
     #TODO: wait until new image is received, update image, detect circles,
     # send mouse position update to Osu game
@@ -159,6 +163,20 @@ class OsuAutoplayer:
                 
                 # Update game state
                 self.update_circles(circles, small_circles)
+
+                if self.disp:
+                    image_rep = np.zeros((300, 400, 3), dtype=np.uint8)
+                    image_rep = cv2.cvtColor(image_rep, cv2.COLOR_RGB2BGR)
+                    cv2.namedWindow("game state")
+                    cv2.moveWindow("game state", 0, 500)
+                    mouse_x, mouse_y = self.reverse_transform_position(cursor_location[0], cursor_location[1])
+                    for active_circle in self.active_circles:
+                        cv2.circle(image_rep, (active_circle.x, active_circle.y), active_circle.inner_radius, (255, 0, 0), -1)
+                        if active_circle.outer_radius > 0:
+                            cv2.circle(image_rep, (active_circle.x, active_circle.y), int(active_circle.outer_radius), (0, 255, 0))
+                    cv2.circle(image_rep, (mouse_x, mouse_y), 10, (0, 0, 255), -1)
+                    cv2.imshow("game state", image_rep)
+                    cv2.waitKey(1)
                 # Debug to view perceived game state`
                 print("[", end='')
                 for active_circle in self.active_circles:
@@ -184,6 +202,12 @@ class OsuAutoplayer:
         scaling_x = (1620 - 300) / 400
         scaling_y = (1080 - 40) / 300
         return (int(initial_pos[0] + scaling_x * x), int(initial_pos[1] + scaling_y * y))
+
+    @staticmethod
+    def reverse_transform_position(x, y):
+        scaling_x = (1620 - 300) / 400
+        scaling_y = (1080 - 40) / 300
+        return (int((x - 300) / scaling_x), int((y - 40) / scaling_y))
     
     def move_cursor(self, x, y):
         global cursor_location
@@ -238,12 +262,14 @@ class OsuAutoplayer:
             # find circle with center closest to pyautogui.position()
             min_dist = np.inf
             min_pos = 0, 0
-            for i in small_circles[0,:]:
-                dist = abs(cursor_location[0] - i[0]) + abs(cursor_location[1] - i[1])
-                if dist < min_dist:
-                    min_dist = dist
-                    min_pos = i[0], i[1]
-            self.move_cursor(min_pos[0], min_pos[1])
+            if small_circles is not None:
+                for i in small_circles[0,:]:
+                    test_x, test_y = self.transform_position(i[0], i[1])
+                    dist = abs(cursor_location[0] - test_x) + abs(cursor_location[1] - test_y)
+                    if dist < min_dist:
+                        min_dist = dist
+                        min_pos = i[0], i[1]
+                self.move_cursor(min_pos[0], min_pos[1])
 
         # if any concentric circles have radius within 10 of each other,
         # move mouse to that location and click
@@ -273,7 +299,7 @@ class OsuAutoplayer:
     
     # returns true if the given point is inside a long note
     def in_long_note(self, long_note):
-        x, y = pyautogui.position()
+        x, y = self.reverse_transform_position(cursor_location[0], cursor_location[1])
         (r1, r2), theta = long_note
 
         temp = -x*math.cos(theta) + y*math.sin(theta)
@@ -389,9 +415,9 @@ class OsuAutoplayer:
         return longNotes
 
     def manual_update_approach_radius(self, index, ):
-        prev_radius = self.active_circles[index].last_outer_radius
-        if prev_radius < 0 or prev_radius < self.active_circles[index].outer_radius:
-            return
+        # prev_radius = self.active_circles[index].last_outer_radius
+        # if prev_radius < self.active_circles[index].outer_radius:
+        #     return
         decay = self.approach_rate * (time.time() - self.update_timestamp)
         self.active_circles[index].manual_outer_radius_update(decay)
     #     self.active_circles[index][4] = self.active_circles[index][3]
@@ -433,6 +459,7 @@ class OsuAutoplayer:
                         outer_radius = int(outer_circle[2])
             new_circle = CircleTapNote(small_circle[0], small_circle[1], small_circle[2], outer_radius)
             self.active_circles.append(new_circle)
+            updated_circles.append(True)
 
         if self.approach_rate < 0:
             return
@@ -440,7 +467,9 @@ class OsuAutoplayer:
         for i, entry in enumerate(updated_circles):
             if not entry:
                 self.manual_update_approach_radius(i)
-    
+        for entry in self.active_circles:
+            if (time.time() - entry.time_stamp > TIME_LIMIT and entry.last_outer_radius < 0) or (entry.outer_radius < 0 and entry.last_outer_radius > 0):
+                self.active_circles.remove(entry)
 
 # img = cv2.imread("images/adj_image_seq_0.bmp", cv2.IMREAD_GRAYSCALE)
 # pyautogui.moveTo(pyautogui.size()[0], 0)
