@@ -468,6 +468,8 @@ class OsuAutoplayer:
                 small_circles = np.uint16(np.around(small_circles))
                 for i in small_circles[0,:]:
                     cv2.circle(img_color, (i[0], i[1]), i[2], (255, 0, 0), 2)
+            cv2.namedWindow("circle detection")
+            cv2.moveWindow("circle detection", 0, 0)
             cv2.imshow("circle detection", img_color)
             cv2.waitKey(1)
         return circles, small_circles
