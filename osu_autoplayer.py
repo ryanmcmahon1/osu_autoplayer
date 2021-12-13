@@ -150,6 +150,13 @@ class OsuAutoplayer:
                 # potentially change this to store long notes instead of looking at each photo
                 self.active_long_notes = self.detect_long_notes(self.disp)
                 
+                # based on these long notes, determine if current mouse position is inside of a long note
+                for long_note in self.active_long_notes.items():
+                    if (self.in_long_note(long_note)):
+                        self.long_note = True
+                        # hold down mouse click when in long note 
+                        pyautogui.mouseDown()               
+                
                 # Update game state
                 self.update_circles(circles, small_circles)
                 # Debug to view perceived game state`
@@ -160,7 +167,7 @@ class OsuAutoplayer:
                 # print(self.active_circles) 
                 self.update_timestamp = time.time()
                 # Move mouse as necessary
-                self.update_mouse()
+                self.update_mouse(small_circles)
 
                 # Prioritize system exit over running autoplayer
                 if self.system_exit:
@@ -225,7 +232,19 @@ class OsuAutoplayer:
 
     # TODO: based on current mouse location and location of circles,
     # decide where to move mouse to
-    def update_mouse(self):
+    def update_mouse(self, small_circles):
+        # if we are in a long note, move cursor to nearest small circle
+        if (self.long_note):
+            # find circle with center closest to pyautogui.position()
+            min_dist = np.inf
+            min_pos = 0, 0
+            for i in small_circles[0,:]:
+                dist = abs(cursor_location[0] - i[0]) + abs(cursor_location[1] - i[1])
+                if dist < min_dist:
+                    min_dist = dist
+                    min_pos = i[0], i[1]
+            self.move_cursor(min_pos[0], min_pos[1])
+
         # if any concentric circles have radius within 10 of each other,
         # move mouse to that location and click
         circle_dists = []
@@ -238,21 +257,13 @@ class OsuAutoplayer:
                 print(min_idx, len(circle_dists), len(self.active_circles))
                 next_circle = self.active_circles[min_idx]
                 self.move_cursor(next_circle.x, next_circle.y)
-                # keep track of if we were in a long note previously
-                long_note_prev = self.long_note
-                self.long_note = False
-
-                for long_note in self.active_long_notes.items():
-                    if (self.in_long_note(long_note, next_circle.x, next_circle.y)):
-                        self.long_note = True
-                # if detection of long note changed, we either need to hold mouse down or release
-                if (self.long_note != long_note_prev):
-                    if (long_note_prev):
-                        pyautogui.mouseUp()
-                    else:
-                        pyautogui.mouseDown()
-                elif circle_dists[min_idx] < 10:
+                if circle_dists[min_idx] < 10:
                     print("Clicking on last shown position.")
+                    # if we reach next circle, no longer in long note
+                    if (self.long_note):
+                        self.long_note = False
+                        pyautogui.mouseUp()
+
                     pyautogui.leftClick()
                     self.active_circles.remove(next_circle)
                     circle_dists.remove(circle_dists[min_idx])
@@ -261,7 +272,8 @@ class OsuAutoplayer:
 
     
     # returns true if the given point is inside a long note
-    def in_long_note(self, long_note, x, y):
+    def in_long_note(self, long_note):
+        x, y = pyautogui.position()
         (r1, r2), theta = long_note
 
         temp = -x*math.cos(theta) + y*math.sin(theta)
