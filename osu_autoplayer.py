@@ -120,15 +120,18 @@ class OsuAutoplayer:
         if self.run_autoplayer:
             # Fix cursor position
             # Ensure cursor moves back to main monitor
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
+            pyautogui.moveRel(-1000, -1000)
+            time.sleep(0.05)
             # Need multiple moves because of limitation from barrier on mouse movement
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
+            pyautogui.moveRel(-1000, -1000)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, -1000)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, -1000)
+            time.sleep(0.05)
             # time.sleep(0.5)
             pyautogui.moveTo(pyautogui.size()[0], 0)
+            time.sleep(0.05)
             global cursor_location
             cursor_location = (0, 0)
             print(f"Reset cursor to {cursor_location}.")
@@ -156,7 +159,7 @@ class OsuAutoplayer:
                 
                 # based on these long notes, determine if current mouse position is inside of a long note
                 for long_note in self.active_long_notes.items():
-                    if (not self.in_long_note(long_note)):
+                    if (self.in_long_note(long_note)):
                         self.long_note = True
                         # hold down mouse click when in long note 
                         pyautogui.mouseDown()               
@@ -262,16 +265,15 @@ class OsuAutoplayer:
             # find circle with center closest to pyautogui.position()
             min_dist = np.inf
             min_pos = 0, 0
-            if small_circles is not None:
-                for i in small_circles[0,:]:
-                    # only consider non-active circles to avoid jumping around
-                    if i not in self.active_circles:
-                        test_x, test_y = self.transform_position(i[0], i[1])
-                        dist = abs(cursor_location[0] - test_x) + abs(cursor_location[1] - test_y)
-                        if dist < min_dist:
-                            min_dist = dist
-                            min_pos = i[0], i[1]
-                self.move_cursor(min_pos[0], min_pos[1])
+            for known_circle in self.active_circles:
+                # only consider non-active circles to avoid jumping around
+                if known_circle.last_outer_radius < 0:
+                    test_x, test_y = self.transform_position(known_circle.x, known_circle.y)
+                    dist = abs(cursor_location[0] - test_x) + abs(cursor_location[1] - test_y)
+                    if dist < min_dist:
+                        min_dist = dist
+                        min_pos = known_circle.x, known_circle.y
+            self.move_cursor(min_pos[0], min_pos[1])
 
         # if any concentric circles have radius within 10 of each other,
         # move mouse to that location and click
