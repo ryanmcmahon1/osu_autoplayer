@@ -31,8 +31,18 @@ frame_time = Value('d', 0, lock=False)
 
 delay_adjust = Value('d', 0, lock=False)
 
+disp = Value('i', 0, lock=False)
+
 # Updated images from main device, to be communicated between parallel processes.
 shared_screenshot = Array("i", 400*300, lock=False)
+
+def GPIO_callback_22(ch):
+    global disp
+    if disp.value > 0:
+        disp.value = 0
+    else:
+        disp.value = 1
+    print(f"Circle display set to {disp.value}.")
 
 def GPIO_callback_23(ch):
     global system_exit
@@ -40,6 +50,9 @@ def GPIO_callback_23(ch):
     print("Exit asserted.")
 
 GPIO.setmode(GPIO.BCM)
+
+GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.add_event_detect(22, GPIO.FALLING, callback=GPIO_callback_22, bouncetime=300)
 GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(23, GPIO.FALLING, callback=GPIO_callback_23, bouncetime=300)
 
@@ -227,6 +240,18 @@ class MouseClicker:
             print("] \n")
             print(f"AR: {self.approach_rate}")
 
+        if disp.value:
+            image_rep = np.zeros((300, 400, 3), dtype=np.uint8)
+            image_rep = cv2.cvtColor(image_rep, cv2.COLOR_RGB2BGR)
+            cv2.namedWindow("game state")
+            cv2.moveWindow("game state", 0, 500)
+            for active_circle in self.active_circles:
+                cv2.circle(image_rep, (active_circle.x, active_circle.y), active_circle.inner_radius, (255, 0, 0), -1)
+                if active_circle.outer_radius > 0:
+                    cv2.circle(image_rep, (active_circle.x, active_circle.y), int(active_circle.outer_radius), (0, 255, 0))
+            cv2.imshow("game state", image_rep)
+            cv2.waitKey(1)
+
     @staticmethod
     def transform_position(x, y):
         initial_pos = (300, 40)
@@ -369,8 +394,6 @@ class OsuAutoplayer:
     def __init__(self, mp_queue, image=None):
         # Most recent screenshot received
         self.image = image
-        # Display circle detection variable
-        self.disp = False
 
         self.image_tag_r = -1
 
@@ -383,14 +406,9 @@ class OsuAutoplayer:
 
         self.frame_timestamp = time.time()
 
-        GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.add_event_detect(22, GPIO.FALLING, callback=self.GPIO_callback_22, bouncetime=300)
         GPIO.add_event_detect(27, GPIO.FALLING, callback=self.GPIO_callback_27, bouncetime=300)
 
-    def GPIO_callback_22(self, ch):
-        self.disp = not self.disp
-        print(f"Circle display set to {self.disp}.")
 
     def GPIO_callback_27(self, ch):
         self.run_autoplayer = not self.run_autoplayer
@@ -402,7 +420,7 @@ class OsuAutoplayer:
     # send mouse position update to Osu game
     def update(self):
         iter_ct = 0
-        global system_exit, frame_time, delay_adjust
+        global system_exit, frame_time, delay_adjust, disp
         while not system_exit.value:
             while self.run_autoplayer:
 
@@ -417,7 +435,7 @@ class OsuAutoplayer:
                     self.image_tag_r = tag_read
 
                     # Detect circles from screenshot
-                    circles, small_circles = self.detect_circles(self.disp)
+                    circles, small_circles = self.detect_circles(disp.value)
                     frame_timing = screenshot_frame_time - self.frame_timestamp
 
                     self.frame_timestamp = screenshot_frame_time
