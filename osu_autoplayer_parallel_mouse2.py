@@ -240,17 +240,17 @@ class MouseClicker:
             print("] \n")
             print(f"AR: {self.approach_rate}")
 
-        if disp.value:
-            image_rep = np.zeros((300, 400, 3), dtype=np.uint8)
-            image_rep = cv2.cvtColor(image_rep, cv2.COLOR_RGB2BGR)
-            cv2.namedWindow("game state")
-            cv2.moveWindow("game state", 0, 500)
-            for active_circle in self.active_circles:
-                cv2.circle(image_rep, (active_circle.x, active_circle.y), active_circle.inner_radius, (255, 0, 0), -1)
-                if active_circle.outer_radius > 0:
-                    cv2.circle(image_rep, (active_circle.x, active_circle.y), int(active_circle.outer_radius), (0, 255, 0))
-            cv2.imshow("game state", image_rep)
-            cv2.waitKey(1)
+            if disp.value:
+                image_rep = np.zeros((300, 400, 3), dtype=np.uint8)
+                image_rep = cv2.cvtColor(image_rep, cv2.COLOR_RGB2BGR)
+                cv2.namedWindow("game state")
+                cv2.moveWindow("game state", 0, 500)
+                for active_circle in self.active_circles:
+                    cv2.circle(image_rep, (active_circle.x, active_circle.y), active_circle.inner_radius, (255, 0, 0), -1)
+                    if active_circle.outer_radius > 0:
+                        cv2.circle(image_rep, (active_circle.x, active_circle.y), int(active_circle.outer_radius), (0, 255, 0))
+                cv2.imshow("game state", image_rep)
+                cv2.waitKey(1)
 
     @staticmethod
     def transform_position(x, y):
