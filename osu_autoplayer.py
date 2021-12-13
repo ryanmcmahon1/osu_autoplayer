@@ -262,7 +262,7 @@ class OsuAutoplayer:
     def update_mouse(self, small_circles):
         # if we are in a long note, move cursor to nearest small circle
         if (self.long_note):
-            # find circle with center closest to pyautogui.position()
+            # find circle with center closest to current position
             min_dist = np.inf
             min_pos = 0, 0
             for known_circle in self.active_circles:
@@ -306,14 +306,32 @@ class OsuAutoplayer:
         x, y = self.reverse_transform_position(cursor_location[0], cursor_location[1])
         (r1, r2), theta = long_note
 
-        temp = -x*math.cos(theta) + y*math.sin(theta)
+        a = math.cos(theta)
+        b = math.sin(theta)
+        x1 = a * r1
+        y1 = b * r1
+        x2 = a * r2
+        y2 = b * r2
+
+        # points for upper portion 
+        pt1x, pt1y = (int(x1 + 1000*(-b)), int(y1 + 1000*(a)))
+        pt2x, pt2y = (int(x1 - 1000*(-b)), int(y1 - 1000*(a)))
+        m1 = (pt2y - pt1y) / (pt2x - pt2y)
+        b1 = pt1y - m1*pt1x 
+
+        # points for lower portion 
+        pt1x, pt1y = (int(x2 + 1000*(-b)), int(y2 + 1000*(a)))
+        pt2x, pt2y = (int(x2 - 1000*(-b)), int(y2 - 1000*(a)))
+        m2 = (pt2y - pt1y) / (pt2x - pt2y)
+        b2 = pt1y - m2*pt1x 
 
         # first check if x,y is below upper bound of long note
-        if (temp - r1 < 0):
+        
+        if (m1*x + b1 - r1 < 0):
             return False
 
         # then check if x,y is above lower bound of long note
-        if (temp - r2 < 0):
+        if (m2*x + b2 - r2 < 0):
             return False
         return True
         
