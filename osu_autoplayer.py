@@ -156,7 +156,7 @@ class OsuAutoplayer:
                 
                 # based on these long notes, determine if current mouse position is inside of a long note
                 for long_note in self.active_long_notes.items():
-                    if (self.in_long_note(long_note)):
+                    if (not self.in_long_note(long_note)):
                         self.long_note = True
                         # hold down mouse click when in long note 
                         pyautogui.mouseDown()               
@@ -264,11 +264,13 @@ class OsuAutoplayer:
             min_pos = 0, 0
             if small_circles is not None:
                 for i in small_circles[0,:]:
-                    test_x, test_y = self.transform_position(i[0], i[1])
-                    dist = abs(cursor_location[0] - test_x) + abs(cursor_location[1] - test_y)
-                    if dist < min_dist:
-                        min_dist = dist
-                        min_pos = i[0], i[1]
+                    # only consider non-active circles to avoid jumping around
+                    if i not in self.active_circles:
+                        test_x, test_y = self.transform_position(i[0], i[1])
+                        dist = abs(cursor_location[0] - test_x) + abs(cursor_location[1] - test_y)
+                        if dist < min_dist:
+                            min_dist = dist
+                            min_pos = i[0], i[1]
                 self.move_cursor(min_pos[0], min_pos[1])
 
         # if any concentric circles have radius within 10 of each other,
@@ -289,7 +291,7 @@ class OsuAutoplayer:
                     if (self.long_note):
                         self.long_note = False
                         pyautogui.mouseUp()
-
+                    # self.long_note = 
                     pyautogui.leftClick()
                     self.active_circles.remove(next_circle)
                     circle_dists.remove(circle_dists[min_idx])
