@@ -16,7 +16,7 @@ pyautogui.PAUSE = 0
 # Port number to use for TCP connection
 PORT = 28800
 HOST_IP = input("Provide Host IP Address to connect to: ")
-THRESHOLD_DIFF = 0
+THRESHOLD_DIFF = 1
 TIME_LIMIT = 1.5
 
 # Cursor location
@@ -141,7 +141,8 @@ class MouseClicker:
 
         # Approximated approach rate for large circle radius size decay (radius/sec)
         self.approach_rate = -1
-        self.ar_alpha = 0.3
+        self.ar_alpha = 0.1
+        self.entry_count = 0
         self.ar_init = False
 
         self.update_timestamp = time.time()
@@ -174,11 +175,15 @@ class MouseClicker:
                         if known_circle.same_center_detection(outer_circle):
                             if known_circle.last_outer_radius > 0:
                                 approach_rate_sample = (known_circle.last_outer_radius - int(outer_circle[2])) / (frame_time + known_circle.frame_time_accm)
-                                if self.ar_init:
+
+                                if self.ar_init and approach_rate_sample > 20 and approach_rate_sample < 100:
+                                    self.ar_alpha = .05 if self.entry_count > 20 else 1/self.entry_count
                                     self.approach_rate = self.ar_alpha * approach_rate_sample + (1 - self.ar_alpha) * self.approach_rate
-                                else:
+                                    self.entry_count += 1
+                                elif not self.ar_init:
                                     self.approach_rate = approach_rate_sample
                                     self.ar_init = True
+                                    self.entry_count += 1
                                 print(f"AR sample: {approach_rate_sample}; {known_circle.last_outer_radius}, {int(outer_circle[2])}, {known_circle.frame_time_accm}")
                             if self.approach_rate > 0:
                                 adjusted_radius = int(outer_circle[2]) - self.approach_rate * (time.time() - delay)
@@ -220,6 +225,7 @@ class MouseClicker:
             for active_circle in self.active_circles:
                 print(active_circle, end='; \n')
             print("] \n")
+            print(f"AR: {self.approach_rate}")
 
     @staticmethod
     def transform_position(x, y):
@@ -348,7 +354,7 @@ class MouseClicker:
                 
             time.sleep(0.001)
 
-            if iter_ct == 80000:
+            if iter_ct == 500:
                 print("[", end='')
                 for active_circle in self.active_circles:
                     print(active_circle, end='; \n')
@@ -434,17 +440,19 @@ class OsuAutoplayer:
         # start = time.time()
         
         # Large cicle detection
-        minDist = 15
-        param1 = 30 #500
+        minDist = 10
+        param1 = 500 #500
         param2 = 100 #200 #smaller value-> more false circles
-        minRadius = 25
+        minRadius = 30
         maxRadius = 80
+        # self.image = cv2.filter2D(self.image, -1, np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1 ,-1]]))
         circles = cv2.HoughCircles(self.image, cv2.HOUGH_GRADIENT, 1, minDist,
             param1=param1, param2=param2, minRadius=minRadius, maxRadius=maxRadius)
 
         # small circle detection
         minRadius = 10
         maxRadius = 25
+        param1 = 100
         param2 = 60
 
         small_circles = cv2.HoughCircles(self.image, cv2.HOUGH_GRADIENT, 1, minDist,
