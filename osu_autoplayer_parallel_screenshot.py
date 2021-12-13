@@ -181,10 +181,16 @@ class OsuAutoplayer:
             pyautogui.moveRel(-10000, 0)
             time.sleep(0.01)
             # Need multiple moves because of limitation from barrier on mouse movement
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
             # time.sleep(0.5)
             pyautogui.moveTo(pyautogui.size()[0], 0)
             global cursor_location
@@ -249,11 +255,25 @@ class OsuAutoplayer:
                 if loop_time > .2:
                     print(f"Long loop time: {loop_time}; iter {iter_ct}")
                     print(f"image: {post_image_time - time_stamp}, circle: {circle_update - post_image_time}, mouse: {mouse_update - circle_update}")
-                    
+                
                 # Prioritize system exit over running autoplayer
                 if system_exit.value:
                     break
                 iter_ct += 1
+
+                if iter_ct % 50 == 0:
+                    if self.disp:
+                        image_rep = np.zeros((300, 400, 3), dtype=np.uint8)
+                        image_rep = cv2.cvtColor(image_rep, cv2.COLOR_RGB2BGR)
+                        cv2.namedWindow("game state")
+                        cv2.moveWindow("game state", 0, 500)
+                        for active_circle in self.active_circles:
+                            cv2.circle(image_rep, (active_circle.x, active_circle.y), active_circle.inner_radius, (255, 0, 0), -1)
+                            if active_circle.outer_radius > 0:
+                                cv2.circle(image_rep, (active_circle.x, active_circle.y), int(active_circle.outer_radius), (0, 255, 0))
+                        cv2.imshow("game state", image_rep)
+                        cv2.waitKey(1)
+                    
     
     @staticmethod
     def transform_position(x, y):

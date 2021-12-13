@@ -120,14 +120,18 @@ class OsuAutoplayer:
         if self.run_autoplayer:
             # Fix cursor position
             # Ensure cursor moves back to main monitor
-            pyautogui.moveRel(-1000, -1000)
+            pyautogui.moveRel(-1000, 0)
             time.sleep(0.05)
             # Need multiple moves because of limitation from barrier on mouse movement
-            pyautogui.moveRel(-1000, -1000)
+            pyautogui.moveRel(-1000, 0)
             time.sleep(0.05)
-            pyautogui.moveRel(-1000, -1000)
+            pyautogui.moveRel(-1000, 0)
             time.sleep(0.05)
-            pyautogui.moveRel(-1000, -1000)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
             time.sleep(0.05)
             # time.sleep(0.5)
             pyautogui.moveTo(pyautogui.size()[0], 0)

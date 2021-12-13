@@ -163,7 +163,7 @@ class MouseClicker:
 
     def manual_update_approach_radius(self, index, ):
         prev_radius = self.active_circles[index].last_outer_radius
-        if prev_radius < 0 or prev_radius < self.active_circles[index].outer_radius:
+        if prev_radius < self.active_circles[index].outer_radius:
             return
         decay = self.approach_rate * (time.time() - self.update_timestamp)
         self.active_circles[index].manual_outer_radius_update(decay)
@@ -284,10 +284,16 @@ class MouseClicker:
             pyautogui.moveRel(-10000, 0)
             time.sleep(0.01)
             # Need multiple moves because of limitation from barrier on mouse movement
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
-            pyautogui.moveRel(-10000, 0)
-            time.sleep(0.01)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
+            pyautogui.moveRel(-1000, 0)
+            time.sleep(0.05)
             # time.sleep(0.5)
             pyautogui.moveTo(pyautogui.size()[0], 0)
             global cursor_location
