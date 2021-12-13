@@ -80,7 +80,7 @@ class OsuAutoplayer:
 
         # Storing circles using CircleTapNote objects
         self.active_circles = []
-        self.active_long_notes = []
+        self.active_long_notes = {}
 
         # true if mouse is currently inside a long note, change cli
         self.long_note = False
@@ -132,7 +132,7 @@ class OsuAutoplayer:
             print(f"Reset cursor to {cursor_location}.")
         else:
             self.active_circles = []
-            self.active_long_notes = []
+            self.active_long_notes = {}
             self.approach_rate = -1
             self.approach_rate_data = []
 
@@ -183,7 +183,8 @@ class OsuAutoplayer:
         dest_x, dest_y = self.transform_position(x, y)
         relative_x = dest_x - cursor_location[0]
         relative_y = dest_y - cursor_location[1]
-        print(f"Moving to ({dest_x}, {dest_y}) with relative ({relative_x}, {relative_y}) for original cooridinates of ({x}, {y}).")
+        if (dest_x, dest_y) != cursor_location:
+            print(f"Moving to ({dest_x}, {dest_y}) with relative ({relative_x}, {relative_y}) for original cooridinates of ({x}, {y}).")
         # Incremental movement needed because of barrier limitations
         movement_x = 0
         movement_y = 0
@@ -234,6 +235,7 @@ class OsuAutoplayer:
         if circle_dists:
             while circle_dists != []:
                 min_idx = circle_dists.index(min(circle_dists))
+                print(min_idx, len(circle_dists), len(self.active_circles))
                 next_circle = self.active_circles[min_idx]
                 self.move_cursor(next_circle.x, next_circle.y)
                 # keep track of if we were in a long note previously
@@ -243,18 +245,20 @@ class OsuAutoplayer:
                 for long_note in self.active_long_notes.items():
                     if (self.in_long_note(long_note, next_circle.x, next_circle.y)):
                         self.long_note = True
-                if circle_dists[min_idx] < 10:
+                # if detection of long note changed, we either need to hold mouse down or release
+                if (self.long_note != long_note_prev):
+                    if (long_note_prev):
+                        pyautogui.mouseUp()
+                    else:
+                        pyautogui.mouseDown()
+                elif circle_dists[min_idx] < 10:
                     print("Clicking on last shown position.")
                     pyautogui.leftClick()
                     self.active_circles.remove(next_circle)
                     circle_dists.remove(circle_dists[min_idx])
                 else:
-                    # if detection of long note changed, we either need to hold mouse down or release
-                    if (self.long_note != long_note_prev):
-                        if (long_note_prev):
-                            pyautogui.mouseUp()
-                        else:
-                            pyautogui.mouseDown()
+                    break
+
     
     # returns true if the given point is inside a long note
     def in_long_note(self, long_note, x, y):
