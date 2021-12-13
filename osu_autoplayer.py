@@ -327,11 +327,11 @@ class OsuAutoplayer:
 
         # first check if x,y is below upper bound of long note
         
-        if (m1*x + b1 - r1 < 0):
+        if (m1*x + b1 - y < 0):
             return False
 
         # then check if x,y is above lower bound of long note
-        if (m2*x + b2 - r2 < 0):
+        if (m2*x + b2 - y < 0):
             return False
         return True
         
