@@ -240,7 +240,7 @@ class OsuAutoplayer:
                 long_note_prev = self.long_note
                 self.long_note = False
 
-                for long_note in self.active_long_notes:
+                for long_note in self.active_long_notes.items():
                     if (self.in_long_note(long_note, next_circle.x, next_circle.y)):
                         self.long_note = True
                 if circle_dists[min_idx] < 10:
@@ -258,6 +258,18 @@ class OsuAutoplayer:
     
     # returns true if the given point is inside a long note
     def in_long_note(self, long_note, x, y):
+        (r1, r2), theta = long_note
+
+        temp = -x*math.cos(theta) + y*math.sin(theta)
+
+        # first check if x,y is below upper bound of long note
+        if (temp - r1 < 0):
+            return False
+
+        # then check if x,y is above lower bound of long note
+        if (temp - r2 < 0):
+            return False
+        return True
         
     
     # detects large and small circles in current image
