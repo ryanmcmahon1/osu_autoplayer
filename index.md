@@ -1,4 +1,4 @@
-## Welcome to GitHub Pages
+## ECE 5725 Final Project: Osu! Autoplayer
 
 You can use the [editor on GitHub](https://github.com/ryanmcmahon1/osu_autoplayer/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
 
