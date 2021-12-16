@@ -1,6 +1,6 @@
 # Osu! Autoplayer
 
-Osu! is a rhythm game where players perform a series of actions using a keyboard and mouse along to the beat of the music. The basic idea is that circles show up on the player's screen, and they have to click these circles along to the beat of the song. Clicking in the wrong location or not at the right time will lead to a lower score. For our final project, we wanted to create a system that automatically plays Osu! and is able to achieve high scores. Knowledge from several areas was used, including computer vision, multiprocessing, and computer networking. 
+Osu! is a rhythm game where players perform a series of actions using a keyboard and mouse along to the beat of the music. The basic idea is that circles show up on the player's screen, and they have to click these circles along to the beat of the song. Clicking in the wrong location or not at the right time will lead to a lower score. For our final project, we wanted to create a system that automatically plays Osu! and is able to achieve high scores. Knowledge from several areas was used, including computer vision, multiprocessing, image processing, and computer networking. 
 
 The autoplayer has two main components. One part of the system, located on the computer running the game, is in charge of taking screenshots of the Osu! gameplay and sending it to the Raspberry Pi. The Raspberry Pi receives and processes these images to identify where circles and other key features are located. The Raspberry Pi then decides where to move the mouse on the game screen and clicks on circles at the correct time. Our autoplayer is able to detect circles in real time and determine when and where to click on the screen to get the highest score. The Osu! autoplayer was completed by Felipe Shiwa and Ryan McMahon as part of our final project for ECE 5725: Design with Embedded OS. In the following sections, we will go over the design of this system and some of the challenges we encountered throughout the project.
 
@@ -37,6 +37,10 @@ One of the main issues we encountered previously was the issue with screenshot l
 Looking at the host side of the connection, the latency for the screenshot transmission is high at the point of sending the screenshot, which would also be seen as an increase in the reception latency. A potential solution to the latency could be to shift from TCP to UDP since UDP simply attempts to transmit without any guarantees of arrival of the data or ordering. Depending on the error rate and transmission rate of UDP, it may be possible to simply drop and skip malformed frames and still manage a better frame rate than with TCP. However, this requires further investigation to resolve the issue. At the moment, we work around the issue by separating this latency from the main loop with multiprocessing.
 
 ![Screenshot latency](docs/assets/images/screenshots.PNG)
+
+## Circle Detection
+
+Now that we were able to send screenshots from the Osu! game to the Raspberry Pi and control the game mouse from the Raspberry Pi, we began work on the image processing component of the system. The basic version of the game has two sets of circles. The smaller inner circles are all the same size and are where the player is supposed to click. The larger outer circles
 
 ## Predictive Updates
 
