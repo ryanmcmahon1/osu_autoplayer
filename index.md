@@ -1,10 +1,8 @@
-## ECE 5725 Final Project: Osu! Autoplayer
+# Osu! Autoplayer
 
-You can use the [editor on GitHub](https://github.com/ryanmcmahon1/osu_autoplayer/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+Osu! is a rhythm game where players attempt to click 
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
-
-### Mouse-Sharing Through Barrier and PyAutoGUI
+## Mouse-Sharing Through Barrier and PyAutoGUI
 
 One of the first challenges that we had to handle was sorting out how to control the mouse on the computer from the Raspberry Pi. After some investigation, we found that the Barrier application (https://github.com/debauchee/barrier) allows both mouse and keyboard to be shared between two devices without the need for a physical switch for sharing the input between the two devices. With the application installed on both devices, a wireless connection is established between the two devices, allowing the mouse to be dragged between screens and for the keyboard to be used on both screens. The only limitation of the Barrier application is that the application seems to only be executable through the Linux desktop, requiring the display to be open on the RPi end. Additionally, the version of the application on both devices had to match to work as expected, leading to the use of the 2.2 version being used as that is the one available on the RPi. In this version, the auto-config option did not work correctly for us, requiring that the IP address of the host device be indicated manually to set up the connection.
 
@@ -16,7 +14,7 @@ We utilized a program running on the RPi and a separate program running on the c
 
 ## Screenshot Transmission over TCP using Sockets
 
-To have the gameplay information reach the RPi, we decided to utilize Python to transmit screenshots of the game from the device running Osu! using Python networking code. With a host client running on the computer end and a client side running on the RPi, the two devices communicate with each other to transmit screenshots of the game. Starting from the example code from the official Python socket documentation (https://docs.python.org/3/library/socket.html#:~:text=override%20this%20setting.-,Example,-%C2%B6), we established a connection between the two devices utilizing TCP, using the IP addresses of each of the connected devices to the network. 
+To have the gameplay information reach the RPi, we decided to utilize Python to transmit screenshots of the game from the device running Osu! using Python networking code. With a host client running on the computer end and a client side running on the RPi, the two devices communicate with each other to transmit screenshots of the game. Starting from the example code from the official Python socket documentation (![link]https://docs.python.org/3/library/socket.html#:~:text=override%20this%20setting.-,Example,-%C2%B6), we established a connection between the two devices utilizing TCP, using the IP addresses of each of the connected devices to the network. 
 
 ![Example client-server code](docs/assets/images/socket_code.PNG)
 
@@ -69,32 +67,3 @@ After parallelizing screenshotting, we found that the mouse movement was still b
 After looking through the functionality that was intended, we decided to utilize queues from multiprocessing between the two processes and utilize message passing to communicate the values between the processes. Since Python variables do not have strict typing, we can send any type of object over the queue, facilitating the process of communicating the objects between the processes as long as they are not too large. Since the image processing results are generally not that large, the queues work well for our use case. The image processing instance can place the results on the queue while the mouse control instance is able to check the queue for when values are available, and using an agreed upon order between the processes, load the objects from the queue into the corresponding variables. We were able to verify that this worked by observing the same behavior as the serial implementation but with improved responsiveness.
 
 After implementing the queue and having all three processes be separate, we were able to control the mouse with better timing now that the image processing did not interfere with the mouse control. Since the game state and the mouse control are so closely related, we did not expect to gain much if we attempted to separate processes for maintaining the game state and to control the mouse, if not make the overall performance worse instead. While progress went smoothly while adding in the queue for parallelizing the two processes with message passing, one important detail to note is that while there are methods for checking whether a queue is full or empty, the documentation indicates that these are not reliable. As a result, we utilize a control message as the first value put into the queue before transmitting the results. This was additionally convenient since the control of the running state of the program was in the image processing loop; however, with the mouse control on a separate process, PyAutoGui raises exceptions when two processes attempt to control the mouse at the same time. This was solved by moving the mouse position reset to the mouse control process and having a “reset” request be sent through the control message that is extracted from the queue when checking whether the queue has any values.
-
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [Basic writing and formatting syntax](https://docs.github.com/en/github/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/ryanmcmahon1/osu_autoplayer/settings/pages). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
