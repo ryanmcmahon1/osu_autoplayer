@@ -101,3 +101,5 @@ In Osu!, there are other types of notes beyond circles (which are called "tap no
 ![long note detection](docs/assets/images/line_detection.jpg)
 
 Once these long notes were detected in the system, we modified the existing automation loop to also store these long notes for a longer duration of time. When the cursor is inside one of these long notes, we added extra code so the mouse tracks the correct path at the right speed before getting to the next circle. We were not as successful in this part of the project (closer to 50% accuracy on long notes), but it was still a great learning experience and could be an interesting project in the future.
+
+Link to gh-pages site: https://ryanmcmahon1.github.io/osu_autoplayer/
