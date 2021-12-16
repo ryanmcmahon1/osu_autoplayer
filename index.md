@@ -40,7 +40,16 @@ Looking at the host side of the connection, the latency for the screenshot trans
 
 ## Circle Detection
 
-Now that we were able to send screenshots from the Osu! game to the Raspberry Pi and control the game mouse from the Raspberry Pi, we began work on the image processing component of the system. The basic version of the game has two sets of circles. The smaller inner circles are all the same size and are where the player is supposed to click. The larger outer circles shrink over time, and the player clicks the inner circle once the outer circle has shrunk to the same size. 
+Now that we were able to send screenshots from the Osu! game to the Raspberry Pi and control the game mouse from the Raspberry Pi, we began work on the image processing component of the system. The basic version of the game has two sets of circles. The smaller inner circles are all the same size and are where the player is supposed to click. The larger outer circles shrink over time, and the player clicks the inner circle once the outer circle has shrunk to the same size. To approach this problem, we considered a few different methods. Some image processing techniques, such as segmentation or contour detection, can detect specific shapes to a high degree of accuracy, but were not ideal for this use case because they are relatively slow. If the image processing takes 1 second to run per image, then our system can only make decisions once per second, which likely is not sufficient to get a decent score. The method we ended up using was a Circle Hough Transform, which is implemented in OpenCV as cv2.HoughCircles. This method works by searching for circles in a 3D parameter space (corresponding to the x,y location and radius of the circle), and returns a set of circular shapes that were found in the image given the input arguments. cv2.HoughCircles accepts a few input arguments, but the most relevant for us were param2, minRadius, and maxRadius. The two radius arguments tell the Hough transform which size circles it should search for. In our case, we were loking for two sets of circles with different sizes, so we had two circle detectors - one to detect the static, small circles, and one to detect the larger circles. 
+
+# Large circle detection
+        minDist = 15
+        param1 = 30 #500
+        param2 = 100 #200 #smaller value-> more false circles
+        minRadius = 25
+        maxRadius = 80
+        circles = cv2.HoughCircles(self.image, cv2.HOUGH_GRADIENT, 1, minDist,
+            param1=param1, param2=param2, minRadius=minRadius, maxRadius=maxRadius)
 
 ![circle_detection1](docs/assets/images/circle_detection1.jpg)
 ![circle_detection2](docs/assets/images/circle_detection2.jpg)
