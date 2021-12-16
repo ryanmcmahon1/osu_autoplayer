@@ -1,6 +1,8 @@
 # Osu! Autoplayer
 
-Osu! is a rhythm game where players attempt to click 
+Osu! is a rhythm game where players perform a series of actions using a keyboard and mouse along to the beat of the music. The basic idea is that circles show up on the player's screen, and they have to click these circles along to the beat of the song. Clicking in the wrong location or not at the right time will lead to a lower score. For our final project, we wanted to create a system that automatically plays Osu! and is able to achieve high scores. Knowledge from several areas was used, including computer vision, multiprocessing, and computer networking. 
+
+The autoplayer has two main components. One part of the system, located on the computer running the game, is in charge of taking screenshots of the Osu! gameplay and sending it to the Raspberry Pi. The Raspberry Pi receives and processes these images to identify where circles and other key features are located. The Raspberry Pi then decides where to move the mouse on the game screen and clicks on circles at the correct time. Our autoplayer is able to detect circles in real time and determine when and where to click on the screen to get the highest score. The Osu! autoplayer was completed as part of our final project for ECE 5725: Design with Embedded OS. In the following sections, we will go over the design of this system and some of the challenges we encountered throughout the project.
 
 ## Mouse-Sharing Through Barrier and PyAutoGUI
 
@@ -14,7 +16,7 @@ We utilized a program running on the RPi and a separate program running on the c
 
 ## Screenshot Transmission over TCP using Sockets
 
-To have the gameplay information reach the RPi, we decided to utilize Python to transmit screenshots of the game from the device running Osu! using Python networking code. With a host client running on the computer end and a client side running on the RPi, the two devices communicate with each other to transmit screenshots of the game. Starting from the example code from the official Python socket documentation (![link]https://docs.python.org/3/library/socket.html#:~:text=override%20this%20setting.-,Example,-%C2%B6), we established a connection between the two devices utilizing TCP, using the IP addresses of each of the connected devices to the network. 
+To have the gameplay information reach the RPi, we decided to utilize Python to transmit screenshots of the game from the device running Osu! using Python networking code. With a host client running on the computer end and a client side running on the RPi, the two devices communicate with each other to transmit screenshots of the game. Starting from the example code from the official Python socket documentation (https://docs.python.org/3/library/socket.html#:~:text=override%20this%20setting.-,Example,-%C2%B6), we established a connection between the two devices utilizing TCP, using the IP addresses of each of the connected devices to the network. 
 
 ![Example client-server code](docs/assets/images/socket_code.PNG)
 
