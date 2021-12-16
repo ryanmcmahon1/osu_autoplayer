@@ -18,7 +18,7 @@ We utilized a program running on the RPi and a separate program running on the c
 
 To have the gameplay information reach the RPi, we decided to utilize Python to transmit screenshots of the game from the device running Osu! using Python networking code. With a host client running on the computer end and a client side running on the RPi, the two devices communicate with each other to transmit screenshots of the game. Starting from the example code from the official Python socket documentation (https://docs.python.org/3/library/socket.html#:~:text=override%20this%20setting.-,Example,-%C2%B6), we established a connection between the two devices utilizing TCP, using the IP addresses of each of the connected devices to the network. 
 
-
+![Example client-server code](/osu_autoplayer/assets/socket_code.PNG)
 
 ```markdown
 Syntax highlighted code block
