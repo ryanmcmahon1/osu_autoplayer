@@ -40,7 +40,10 @@ Looking at the host side of the connection, the latency for the screenshot trans
 
 ## Circle Detection
 
-Now that we were able to send screenshots from the Osu! game to the Raspberry Pi and control the game mouse from the Raspberry Pi, we began work on the image processing component of the system. The basic version of the game has two sets of circles. The smaller inner circles are all the same size and are where the player is supposed to click. The larger outer circles
+Now that we were able to send screenshots from the Osu! game to the Raspberry Pi and control the game mouse from the Raspberry Pi, we began work on the image processing component of the system. The basic version of the game has two sets of circles. The smaller inner circles are all the same size and are where the player is supposed to click. The larger outer circles shrink over time, and the player clicks the inner circle once the outer circle has shrunk to the same size. 
+
+![circle_detection1](docs/assets/images/circle_detection1.jpg)
+![circle_detection2](docs/assets/images/circle_detection2.jpg)
 
 ## Predictive Updates
 
